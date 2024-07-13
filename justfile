@@ -9,3 +9,4 @@ deploy:
 
 export-abi:
   cargo stylus export-abi > target/contract.sol
+  forge inspect target/contract.sol:IBataille abi > target/abi.json
