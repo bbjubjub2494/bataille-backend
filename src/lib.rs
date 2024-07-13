@@ -4,9 +4,9 @@
 /// Import items from the SDK. The prelude contains common traits and macros.
 use stylus_sdk::prelude::*;
 use stylus_sdk::abi::Bytes;
-use stylus_sdk::alloy_primitives::{Address, B256, U256};
+use stylus_sdk::alloy_primitives::*;
 use stylus_sdk::msg;
-use stylus_sdk::storage::{StorageU8, StorageVec};
+use stylus_sdk::storage::*;
 use stylus_sdk::crypto::keccak;
 
 use rand::{RngCore, Rng};
@@ -70,15 +70,21 @@ impl RngCore for RngKeccak256 {
 
 sol_storage!{
     #[derive(Erase)]
+    pub struct Player {
+        address owner;
+        uint8[] heap;
+        uint8[] revealedCards;
+    }
+    #[derive(Erase)]
     pub struct Game {
         uint8[] commonHeap;
-        address[] players;
-        uint8[][] playerHeaps;
+        Player[] players;
+        uint64[] activePlayers;
+        uint64 currentPlayerIndex;
         bool started;
         bool bataille;
         uint64 nextRound;
         address[2] playersBataille;
-        uint turn;
     }
 #[entrypoint]
     pub struct Bataille {
@@ -100,12 +106,19 @@ fn draw(rng: &mut RngKeccak256, heap: &mut StorageVec<StorageU8>) -> Card {
         card.to()
         }
 
+impl Bataille {
+    fn _play(&mut self, card: Card) {
+        ()
+    }
+}
+
 #[external]
 impl Bataille {
     fn createGame(&mut self) -> u64 {
         let id = self.games.len();
         let mut game = self.games.grow();
-        game.players.push(msg::sender());
+        let mut player = game.players.grow();
+        player.owner.set(msg::sender());
         id.try_into().unwrap()
     }
 
@@ -118,7 +131,8 @@ impl Bataille {
         if *game.started {
             Err("game started")?;
         }
-        game.players.push(msg::sender());
+        let mut player = game.players.grow();
+        player.owner.set(msg::sender());
         Ok(())
     }
 
@@ -142,10 +156,13 @@ impl Bataille {
             Err("game not started")?;
         }
 
-        let playerId = game.turn.to::<u64>() % (game.players.len() as u64);
-        if msg::sender() != game.players.get(playerId).unwrap() {
+        let playerIndex: usize = game.currentPlayerIndex.to();
+        let playerId = game.activePlayers.get(playerIndex).unwrap();
+        let player = game.players.get_mut(playerId).unwrap();
+        if msg::sender() != *player.owner {
             Err("out of turn")?;
         }
+        drop(player);
         
         // TODO: validate drand_signature
         //
@@ -154,10 +171,40 @@ impl Bataille {
             draw(&mut rng, &mut game.commonHeap)
         } else {
             // assume playerHeap.len() != 0 otherwise we would be out of the game
-            let mut playerHeap = game.playerHeaps.get_mut(playerId).unwrap();
-            draw(&mut rng, &mut *playerHeap)
+            let mut player = game.players.get_mut(playerId).unwrap();
+                draw(&mut rng, &mut player.heap)
+                /*
+            } else {
+                // player lost
+                let mut i = playerId as usize;
+                while i < game.players.len() - 1 {
+                    game.players.setter(i).unwrap().set(game.players.get(i+1));
+                    i+= 1;
+                }
+            }
+            */
         };
-        //TODO
+        let mut player = game.players.get_mut(playerId).unwrap();
+        player.revealedCards.push(U8::from(card));
+        // TODO: detect bataille
+        drop(player);
+        let nextPlayerIndex = *game.currentPlayerIndex + U64::from(1);
+        game.currentPlayerIndex.set(nextPlayerIndex);
+        if nextPlayerIndex == U64::from(game.players.len()) {
+            game.currentPlayerIndex.set(U64::from(0));
+            let mut winnerId = game.activePlayers.get(0).unwrap();
+            let mut winner = game.players.get(winnerId).unwrap();
+            let mut i = 1;
+            while i < game.activePlayers.len() {
+                let playerId = game.activePlayers.get(i).unwrap();
+                let player = game.players.get(playerId).unwrap();
+                if player.revealedCards.get(0).unwrap() > winner.revealedCards.get(0).unwrap() {
+                    winnerId = playerId;
+                    winner = player;
+                }
+                i += 1;
+            }
+        }
         Ok(())
     }
 
@@ -165,9 +212,7 @@ impl Bataille {
         Address::ZERO
     }
 
-    fn turn(&self, game_id: u64) -> u64 {
-        self.games.get(game_id).unwrap().turn.to()
-    }
+
 
     fn nextDrandRound(&self, game_id: u64) -> u64 {
         self.games.get(game_id).unwrap().nextRound.to()
