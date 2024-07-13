@@ -6,6 +6,7 @@ use stylus_sdk::prelude::*;
 use stylus_sdk::abi::Bytes;
 use stylus_sdk::alloy_primitives::{Address, B256, U256};
 use stylus_sdk::msg;
+use stylus_sdk::storage::{StorageU8, StorageVec};
 use stylus_sdk::crypto::keccak;
 
 use rand::{RngCore, Rng};
@@ -85,6 +86,20 @@ sol_storage!{
     }
 }
 
+fn draw(rng: &mut RngKeccak256, heap: &mut StorageVec<StorageU8>) -> Card {
+        let i = rng.gen_range(0..heap.len());
+
+        // Shuffle vector method: pick an element at random, swap it with the element at the end
+        // and pop.
+        let last_card = heap.get(heap.len()-1).unwrap();
+        let mut setter = heap.setter(i).unwrap();
+        let card = setter.get();
+        setter.set(last_card);
+        drop(setter);
+        heap.pop();
+        card.to()
+        }
+
 #[external]
 impl Bataille {
     fn createGame(&mut self) -> u64 {
@@ -127,23 +142,21 @@ impl Bataille {
             Err("game not started")?;
         }
 
-        if msg::sender() != game.players.get(game.turn.to::<u64>() % (game.players.len() as u64)).unwrap() {
+        let playerId = game.turn.to::<u64>() % (game.players.len() as u64);
+        if msg::sender() != game.players.get(playerId).unwrap() {
             Err("out of turn")?;
         }
         
         // TODO: validate drand_signature
         //
         let mut rng = RngKeccak256::seed(drand_signature.0);
-        let i = rng.gen_range(0..game.commonHeap.len());
-
-        // Shuffle vector method: pick an element at random, swap it with the element at the end
-        // and pop.
-        let last_card = game.commonHeap.get(game.commonHeap.len()-1).unwrap();
-        let mut setter = game.commonHeap.setter(i).unwrap();
-        let card = setter.get();
-        setter.set(last_card);
-        drop(setter);
-        game.commonHeap.pop();
+        let card = if game.commonHeap.len() != 0 {
+            draw(&mut rng, &mut game.commonHeap)
+        } else {
+            // assume playerHeap.len() != 0 otherwise we would be out of the game
+            let mut playerHeap = game.playerHeaps.get_mut(playerId).unwrap();
+            draw(&mut rng, &mut *playerHeap)
+        };
         //TODO
         Ok(())
     }
