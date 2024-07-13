@@ -99,7 +99,21 @@ impl Bataille {
             Some(game) => game,
             None => Err("no such game")?
         };
+
+        if *game.started {
+            Err("game started")?;
+        }
         game.players.push(msg::sender());
+        Ok(())
+    }
+
+    fn startGame(&mut self, id: u64) -> Result<(), Vec<u8>> {
+        let mut game = match self.games.get_mut(id) {
+            Some(game) => game,
+            None => Err("no such game")?
+        };
+
+        game.started.set(true);
         Ok(())
     }
 
@@ -108,6 +122,17 @@ impl Bataille {
             Some(game) => game,
             None => Err("no such game")?
         };
+
+        if !*game.started {
+            Err("game not started")?;
+        }
+
+        if msg::sender() != game.players.get(game.turn.to::<u64>() % (game.players.len() as u64)).unwrap() {
+            Err("out of turn")?;
+        }
+        
+        // TODO: validate drand_signature
+        //
         let mut rng = RngKeccak256::seed(drand_signature.0);
         let i = rng.gen_range(0..game.commonHeap.len());
 
@@ -127,8 +152,8 @@ impl Bataille {
         Address::ZERO
     }
 
-    fn turn(&self, game_id: u64) -> U256 {
-        *self.games.get(game_id).unwrap().turn
+    fn turn(&self, game_id: u64) -> u64 {
+        self.games.get(game_id).unwrap().turn.to()
     }
 
     fn nextDrandRound(&self, game_id: u64) -> u64 {
