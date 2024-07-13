@@ -13,6 +13,12 @@ use rand::{RngCore, Rng};
 
 extern crate alloc;
 
+/// DRAND Quicknet genesis time
+const GENESIS_TIME: u64 = 1692803367;
+
+/// DRAND Quicknet period
+const PERIOD: u64 = 3;
+
 #[global_allocator]
 static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 
@@ -143,6 +149,8 @@ impl Bataille {
         };
 
         game.started.set(true);
+        
+        game.nextRound.set((block::timestamp() - GENESIS_TIME) / period + 1);
         Ok(())
     }
 
@@ -205,6 +213,8 @@ impl Bataille {
                 i += 1;
             }
         }
+
+        game.nextRound.set((block::timestamp() - GENESIS_TIME) / period + 1);
         Ok(())
     }
 
