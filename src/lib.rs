@@ -6,6 +6,7 @@ use stylus_sdk::prelude::*;
 use stylus_sdk::abi::Bytes;
 use stylus_sdk::alloy_primitives::*;
 use stylus_sdk::msg;
+use stylus_sdk::block;
 use stylus_sdk::storage::*;
 use stylus_sdk::crypto::keccak;
 
@@ -150,7 +151,7 @@ impl Bataille {
 
         game.started.set(true);
         
-        game.nextRound.set((block::timestamp() - GENESIS_TIME) / period + 1);
+        game.nextRound.set(U64::from((block::timestamp() - GENESIS_TIME) / PERIOD + 1));
         Ok(())
     }
 
@@ -214,7 +215,7 @@ impl Bataille {
             }
         }
 
-        game.nextRound.set((block::timestamp() - GENESIS_TIME) / period + 1);
+        game.nextRound.set(U64::from((block::timestamp() - GENESIS_TIME) / PERIOD + 1));
         Ok(())
     }
 
