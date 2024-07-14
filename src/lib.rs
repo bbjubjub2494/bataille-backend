@@ -55,7 +55,7 @@ impl RngKeccak256 {
         }
     }
     fn rand256(&mut self) -> B256 {
-        let mut buf = [0; 40];
+        let mut buf = [0; 36];
         buf[..32].copy_from_slice(&self.state[..]);
         buf[32..].copy_from_slice(&self.counter.to_be_bytes());
         self.counter += 1;
@@ -112,6 +112,7 @@ fn draw(rng: &mut RngKeccak256, heap: &mut StorageVec<StorageU8>) -> Card {
 
         // Shuffle vector method: pick an element at random, swap it with the element at the end
         // and pop.
+        /*
         let last_card = heap.get(heap.len()-1).unwrap();
         let mut setter = heap.setter(i).unwrap();
         let card = setter.get();
@@ -119,6 +120,8 @@ fn draw(rng: &mut RngKeccak256, heap: &mut StorageVec<StorageU8>) -> Card {
         drop(setter);
         heap.pop();
         card.to()
+        */
+        heap.get(i).unwrap().to()
         }
 
 impl Bataille {
@@ -169,7 +172,7 @@ impl Bataille {
         Ok(())
     }
 
-    fn draw(&mut self, game_id: u64, drand_signature: Bytes) -> Result<(), Vec<u8>> {
+    fn draw(&mut self, game_id: u64, drand_signature: Bytes) -> Result<u8, Vec<u8>> {
         let mut game = match self.games.get_mut(game_id) {
             Some(game) => game,
             None => Err("no such game")?
@@ -180,26 +183,8 @@ impl Bataille {
         }
 
         
-        /*
         let mut rng = RngKeccak256::seed(&drand_signature.0);
-        let card = // if game.commonHeap.len() != 0 {
-            draw(&mut rng, &mut game.commonHeap)
-        /*} else {
-            // assume playerHeap.len() != 0 otherwise we would be out of the game
-            let mut player = game.players.get_mut(playerId).unwrap();
-                draw(&mut rng, &mut player.heap)
-                /*
-            } else {
-                // player lost
-                let mut i = playerId as usize;
-                while i < game.players.len() - 1 {
-                    game.players.setter(i).unwrap().set(game.players.get(i+1));
-                    i+= 1;
-                }
-            }
-            */
-        }*/;
-    */
+        let card = draw(&mut rng, &mut game.commonHeap);
 
         let expected_round: u64 = game.nextRound.to();
         game.nextRound.set(U64::from((block::timestamp() - GENESIS_TIME) / PERIOD + 1));
@@ -227,7 +212,7 @@ impl Bataille {
         _ => Err("drand verification failed")?
         }
 
-        Ok(())
+        Ok(card)
     }
 
     fn winner(&self, game_id: u64) -> Address {
