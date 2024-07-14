@@ -104,6 +104,11 @@ sol_storage!{
 #[entrypoint]
     pub struct Bataille {
         Game[] games;
+
+        /// Hacky solution since WAGMI has no easy way to read the return value of mutating
+        /// functions
+        uint latestGame;
+        uint8 latestCard;
     }
 }
 
@@ -129,7 +134,7 @@ impl Bataille {
 
 #[external]
 impl Bataille {
-    fn createGame(&mut self) -> u64 {
+    fn createGame(&mut self) {
         let id = self.games.len();
         let mut game = self.games.grow();
         let mut player = game.players.grow();
@@ -139,7 +144,11 @@ impl Bataille {
             // fill the heap with all the cards
             game.commonHeap.push(U8::from(card));
         }
-        id.try_into().unwrap()
+        self.latestGame.set(id.try_into().unwrap());
+    }
+
+    fn latestGame(&self) -> u64 {
+        self.latestGame.get().to()
     }
 
     fn joinGame(&mut self, id: u64) -> Result<(), Vec<u8>> {
@@ -169,7 +178,7 @@ impl Bataille {
         Ok(())
     }
 
-    fn draw(&mut self, game_id: u64, drand_signature: Bytes) -> Result<u8, Vec<u8>> {
+    fn draw(&mut self, game_id: u64, drand_signature: Bytes) -> Result<(), Vec<u8>> {
         let mut game = match self.games.get_mut(game_id) {
             Some(game) => game,
             None => Err("no such game")?
@@ -209,13 +218,13 @@ impl Bataille {
         _ => Err("drand verification failed")?
         }
 
-        Ok(card)
+        self.latestCard.set(U8::from(card));
+        Ok(())
     }
 
-    fn winner(&self, game_id: u64) -> Address {
-        Address::ZERO
+    fn latestCard(&self) -> u8 {
+        self.latestCard.get().to()
     }
-
 
 
     fn nextDrandRound(&self, game_id: u64) -> u64 {
