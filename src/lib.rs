@@ -179,19 +179,12 @@ impl Bataille {
             Err("game not started")?;
         }
 
-        let playerIndex: usize = game.currentPlayerIndex.to();
-        let playerId = game.activePlayers.get(playerIndex).unwrap();
-        let player = game.players.get_mut(playerId).unwrap();
-        if msg::sender() != *player.owner {
-            Err("out of turn")?;
-        }
-        drop(player);
-
         
+        /*
         let mut rng = RngKeccak256::seed(&drand_signature.0);
-        let card = if game.commonHeap.len() != 0 {
+        let card = // if game.commonHeap.len() != 0 {
             draw(&mut rng, &mut game.commonHeap)
-        } else {
+        /*} else {
             // assume playerHeap.len() != 0 otherwise we would be out of the game
             let mut player = game.players.get_mut(playerId).unwrap();
                 draw(&mut rng, &mut player.heap)
@@ -205,39 +198,34 @@ impl Bataille {
                 }
             }
             */
-        };
-        let mut player = game.players.get_mut(playerId).unwrap();
-        player.revealedCards.push(U8::from(card));
-        // TODO: detect bataille
-        drop(player);
-        let nextPlayerIndex = *game.currentPlayerIndex + U64::from(1);
-        game.currentPlayerIndex.set(nextPlayerIndex);
-        if nextPlayerIndex == U64::from(game.players.len()) {
-            game.currentPlayerIndex.set(U64::from(0));
-            let mut winnerId = game.activePlayers.get(0).unwrap();
-            let mut winner = game.players.get(winnerId).unwrap();
-            let mut i = 1;
-            while i < game.activePlayers.len() {
-                let playerId = game.activePlayers.get(i).unwrap();
-                let player = game.players.get(playerId).unwrap();
-                if player.revealedCards.get(0).unwrap() > winner.revealedCards.get(0).unwrap() {
-                    winnerId = playerId;
-                    winner = player;
-                }
-                i += 1;
-            }
-        }
+        }*/;
+    */
 
         let expected_round: u64 = game.nextRound.to();
         game.nextRound.set(U64::from((block::timestamp() - GENESIS_TIME) / PERIOD + 1));
 
         // do the beacon verification now so that we can drop mutable borrows
         drop(game);
+        /* FIXME borfed calldata starts with an extra 0x02 for some reason
         match IDrandVerify::new(address!("7d0da1d76929fdc256d0cf33829ce38afd14a1e7")).verify(Call::new_in(self), expected_round, drand_signature.0.into()) {
 
         Ok(true) => (),
         _ => Err("drand verification failed")?
             }
+        */
+        let mut calldata = [0u8; 164];
+        calldata[0] = 0xf7;
+        calldata[1] = 0xdd;
+        calldata[2] = 0xea;
+        calldata[3] = 0x5a;
+        calldata[28..36].copy_from_slice(&expected_round.to_be_bytes());
+        calldata[4+0x3f] = 0x40;
+        calldata[4+0x5f] = 0x30;
+        calldata[100..148].copy_from_slice(&drand_signature.0);
+        match stylus_sdk::call::static_call(Call::new_in(self), address!("7d0da1d76929fdc256d0cf33829ce38afd14a1e7"), &calldata) {
+            Ok(_) => (), // FIXME check data
+        _ => Err("drand verification failed")?
+        }
 
         Ok(())
     }
