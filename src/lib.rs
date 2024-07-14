@@ -9,10 +9,18 @@ use stylus_sdk::msg;
 use stylus_sdk::block;
 use stylus_sdk::storage::*;
 use stylus_sdk::crypto::keccak;
+use stylus_sdk::alloy_sol_types;
+use stylus_sdk::call::Call;
 
 use rand::{RngCore, Rng};
 
 extern crate alloc;
+
+sol_interface!{
+interface IDrandVerify {
+    function verify(uint64 round_number, bytes calldata sig) external view returns (bool);
+}
+}
 
 /// DRAND Quicknet genesis time
 const GENESIS_TIME: u64 = 1692803367;
@@ -30,9 +38,9 @@ use stylus_sdk::prelude::sol_storage;
 
 type Card = u8;
 
-const N_CARDS: i32 = 52;
-const N_FAMILIES: i32 = 4;
-const N_VALUES: i32 = 13;
+const N_CARDS: u8 = 52;
+const N_FAMILIES: u8 = 4;
+const N_VALUES: u8 = 13;
 
 struct RngKeccak256 {
     state: B256,
@@ -40,7 +48,7 @@ struct RngKeccak256 {
 }
 
 impl RngKeccak256 {
-    fn seed(entropy: Vec<u8>) -> Self {
+    fn seed(entropy: &[u8]) -> Self {
         Self {
             state: keccak(entropy),
             counter: 0,
@@ -126,6 +134,11 @@ impl Bataille {
         let mut game = self.games.grow();
         let mut player = game.players.grow();
         player.owner.set(msg::sender());
+        game.activePlayers.push(U64::from(id));
+        for card in 0..N_CARDS {
+            // fill the heap with all the cards
+            game.commonHeap.push(U8::from(card));
+        }
         id.try_into().unwrap()
     }
 
@@ -140,6 +153,7 @@ impl Bataille {
         }
         let mut player = game.players.grow();
         player.owner.set(msg::sender());
+        game.activePlayers.push(U64::from(id));
         Ok(())
     }
 
@@ -172,10 +186,9 @@ impl Bataille {
             Err("out of turn")?;
         }
         drop(player);
+
         
-        // TODO: validate drand_signature
-        //
-        let mut rng = RngKeccak256::seed(drand_signature.0);
+        let mut rng = RngKeccak256::seed(&drand_signature.0);
         let card = if game.commonHeap.len() != 0 {
             draw(&mut rng, &mut game.commonHeap)
         } else {
@@ -215,7 +228,17 @@ impl Bataille {
             }
         }
 
+        let expected_round: u64 = game.nextRound.to();
         game.nextRound.set(U64::from((block::timestamp() - GENESIS_TIME) / PERIOD + 1));
+
+        // do the beacon verification now so that we can drop mutable borrows
+        drop(game);
+        match IDrandVerify::new(address!("7d0da1d76929fdc256d0cf33829ce38afd14a1e7")).verify(Call::new_in(self), expected_round, drand_signature.0.into()) {
+
+        Ok(true) => (),
+        _ => Err("drand verification failed")?
+            }
+
         Ok(())
     }
 
