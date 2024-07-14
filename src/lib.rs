@@ -1,22 +1,22 @@
 // Allow `cargo stylus export-abi` to generate a main function.
 #![cfg_attr(not(feature = "export-abi"), no_main)]
 
-/// Import items from the SDK. The prelude contains common traits and macros.
-use stylus_sdk::prelude::*;
 use stylus_sdk::abi::Bytes;
 use stylus_sdk::alloy_primitives::*;
-use stylus_sdk::msg;
-use stylus_sdk::block;
-use stylus_sdk::storage::*;
-use stylus_sdk::crypto::keccak;
 use stylus_sdk::alloy_sol_types;
+use stylus_sdk::block;
 use stylus_sdk::call::Call;
+use stylus_sdk::crypto::keccak;
+use stylus_sdk::msg;
+/// Import items from the SDK. The prelude contains common traits and macros.
+use stylus_sdk::prelude::*;
+use stylus_sdk::storage::*;
 
-use rand::{RngCore, Rng};
+use rand::{Rng, RngCore};
 
 extern crate alloc;
 
-sol_interface!{
+sol_interface! {
 interface IDrandVerify {
     function verify(uint64 round_number, bytes calldata sig) external view returns (bool);
 }
@@ -33,8 +33,8 @@ static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 
 use alloc::vec::Vec;
 
-use stylus_sdk::stylus_proc::entrypoint;
 use stylus_sdk::prelude::sol_storage;
+use stylus_sdk::stylus_proc::entrypoint;
 
 type Card = u8;
 
@@ -83,7 +83,7 @@ impl RngCore for RngKeccak256 {
     }
 }
 
-sol_storage!{
+sol_storage! {
     #[derive(Erase)]
     pub struct Player {
         address owner;
@@ -113,18 +113,18 @@ sol_storage!{
 }
 
 fn draw(rng: &mut RngKeccak256, heap: &mut StorageVec<StorageU8>) -> Card {
-        let i = rng.gen_range(0..heap.len());
+    let i = rng.gen_range(0..heap.len());
 
-        // Shuffle vector method: pick an element at random, swap it with the element at the end
-        // and pop.
-        let last_card = heap.get(heap.len()-1).unwrap();
-        let mut setter = heap.setter(i).unwrap();
-        let card = setter.get();
-        setter.set(last_card);
-        drop(setter);
-        heap.pop();
-        card.to()
-        }
+    // Shuffle vector method: pick an element at random, swap it with the element at the end
+    // and pop.
+    let last_card = heap.get(heap.len() - 1).unwrap();
+    let mut setter = heap.setter(i).unwrap();
+    let card = setter.get();
+    setter.set(last_card);
+    drop(setter);
+    heap.pop();
+    card.to()
+}
 
 impl Bataille {
     fn _play(&mut self, card: Card) {
@@ -154,7 +154,7 @@ impl Bataille {
     fn joinGame(&mut self, id: u64) -> Result<(), Vec<u8>> {
         let mut game = match self.games.get_mut(id) {
             Some(game) => game,
-            None => Err("no such game")?
+            None => Err("no such game")?,
         };
 
         if *game.started {
@@ -169,31 +169,32 @@ impl Bataille {
     fn startGame(&mut self, id: u64) -> Result<(), Vec<u8>> {
         let mut game = match self.games.get_mut(id) {
             Some(game) => game,
-            None => Err("no such game")?
+            None => Err("no such game")?,
         };
 
         game.started.set(true);
-        
-        game.nextRound.set(U64::from((block::timestamp() - GENESIS_TIME) / PERIOD + 1));
+
+        game.nextRound
+            .set(U64::from((block::timestamp() - GENESIS_TIME) / PERIOD + 1));
         Ok(())
     }
 
     fn draw(&mut self, game_id: u64, drand_signature: Bytes) -> Result<(), Vec<u8>> {
         let mut game = match self.games.get_mut(game_id) {
             Some(game) => game,
-            None => Err("no such game")?
+            None => Err("no such game")?,
         };
 
         if !*game.started {
             Err("game not started")?;
         }
 
-        
         let mut rng = RngKeccak256::seed(&drand_signature.0);
         let card = draw(&mut rng, &mut game.commonHeap);
 
         let expected_round: u64 = game.nextRound.to();
-        game.nextRound.set(U64::from((block::timestamp() - GENESIS_TIME) / PERIOD + 1));
+        game.nextRound
+            .set(U64::from((block::timestamp() - GENESIS_TIME) / PERIOD + 1));
 
         // do the beacon verification now so that we can drop mutable borrows
         drop(game);
@@ -210,12 +211,16 @@ impl Bataille {
         calldata[2] = 0xea;
         calldata[3] = 0x5a;
         calldata[28..36].copy_from_slice(&expected_round.to_be_bytes());
-        calldata[4+0x3f] = 0x40;
-        calldata[4+0x5f] = 0x30;
+        calldata[4 + 0x3f] = 0x40;
+        calldata[4 + 0x5f] = 0x30;
         calldata[100..148].copy_from_slice(&drand_signature.0);
-        match stylus_sdk::call::static_call(Call::new_in(self), address!("7d0da1d76929fdc256d0cf33829ce38afd14a1e7"), &calldata) {
+        match stylus_sdk::call::static_call(
+            Call::new_in(self),
+            address!("7d0da1d76929fdc256d0cf33829ce38afd14a1e7"),
+            &calldata,
+        ) {
             Ok(_) => (), // FIXME check data
-        _ => Err("drand verification failed")?
+            _ => Err("drand verification failed")?,
         }
 
         self.latestCard.set(U8::from(card));
@@ -225,7 +230,6 @@ impl Bataille {
     fn latestCard(&self) -> u8 {
         self.latestCard.get().to()
     }
-
 
     fn nextDrandRound(&self, game_id: u64) -> u64 {
         self.games.get(game_id).unwrap().nextRound.to()
