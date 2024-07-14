@@ -112,7 +112,6 @@ fn draw(rng: &mut RngKeccak256, heap: &mut StorageVec<StorageU8>) -> Card {
 
         // Shuffle vector method: pick an element at random, swap it with the element at the end
         // and pop.
-        /*
         let last_card = heap.get(heap.len()-1).unwrap();
         let mut setter = heap.setter(i).unwrap();
         let card = setter.get();
@@ -120,8 +119,6 @@ fn draw(rng: &mut RngKeccak256, heap: &mut StorageVec<StorageU8>) -> Card {
         drop(setter);
         heap.pop();
         card.to()
-        */
-        heap.get(i).unwrap().to()
         }
 
 impl Bataille {
